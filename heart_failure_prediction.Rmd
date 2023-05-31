@@ -1,0 +1,1691 @@
+---
+title: "Heart Failure Prediction"
+author: "Katarina Virijević i Ivana Dragović"
+output: html_notebook
+---
+## Uvod
+
+Odabrani skup podataka "Heart Failure Prediction" sadrži podatke o ispitanicima sa potencijalno oslabljenim radom srca. Ljudima sa kardiovaskularnim oboljenjima ili koji su pod visokim kardiovaskularnim rizikom (zbog prisustva jednog ili više faktora rizika - hipertenzija, dijabetes, hiperlipidemija ili već ustanovljena bolest) potrebno je rano otkrivanje i lečenje, pri čemu model mašinskog učenja može biti od velike pomoći. Dostupne podatake i parametare koristićemo u svrhu predviđanja smrtnosti nastale usled otkazivanja srca.
+
+## Opis podataka
+
+Skup podataka sastoji se od 13 atributa i 315 primera. Imena atributa i njigova značenja data su u nastavku:
+
+
+#### Numeričke promenljive
+* **Age** - Godine ispitanika
+* **Creatinine_phosphokinase** - Količina CPK enzima (kreatin kinaza) u krvi (mcg/L)
+* **Ejection_fraction** - Procenat krvi koja napušta srce pri svakoj kontrakciji
+* **Platelets** - Trombociti u krvi (kiloplatelets/mL)
+* **Serum_creatinine** - Nivo serumskog kreatinina u krvi (mg/dL)
+* **Serum_sodium** - Nivo natrijuma seruma u krvi (mEq/L)
+* **Time** - Period praćenja (izražen u danima)
+
+
+#### Kategorijske promenljive
+* **Anaemia** - Označava da li ispitanik ima anemiju (binarna klasifikacija - 0 ili 1)
+* **Diabetes** - Označava da li ispitanik ima dijabetes (binarna klasifikacija - 0 ili 1)
+* **High_blood_pressure** - Označava da li ispitanik ima povišeni krvni pritisak (binarna klasifikacija - 0 ili 1)
+* **Sex** - Pol ispitanika (binarna klasifikacija - 0(žena) ili 1(muškarac))
+* **Smoking** - Označava da li je ispitanik pušač (binarna klasifikacija - 0 ili 1)
+* **DEATH_EVENT** -  **Ciljna promenljiva**, označava da li je ispitanik preminuo tokom perioda praćenja (binarna klasifikacija - 0 ili 1)
+
+## Učitavanje biblioteka i skupa podataka
+
+```{r}
+library(tidyverse)
+```
+```{r}
+library(mice)
+```
+```{r}
+library(VIM)
+library(colorspace)
+library(grid)
+```
+
+```{r}
+library(Amelia)
+```
+```{r}
+library(naniar)
+```
+```{r}
+library(plotrix)
+library(ggridges)
+```
+
+```{r}
+library(vcd)
+```
+```{r}
+library(rpart)
+library(rpart.plot)
+```
+
+\
+Izvršavamo učitavanje skupa podataka u promenljivu **data**:
+```{r}
+data = read.csv("C:/Users/Windows10/Documents/R/data/heart_failure_clinical_records_dataset_NA.csv")
+```
+
+\
+Izvršenjem funkcije **dim**, dobijamo informaciju da skup podataka sadrži 315 redova i 13 kolona, kao što je već napomenuto u odeljku "**Opis podataka**".
+```{r}
+dim(data)
+```
+\
+Uz pomoć funkcije **head** možemo pregledati prvih **n** redova skupa podataka (u našem slučaju **10** redova).
+```{r}
+head(data, n=10)
+```
+```{r}
+summary(data)
+```
+Izvršavanjem funkcije **summary** dobijamo dodatne informacije o skupu podataka. Na osnovu toga možemo primetiti da nekoliko kolona skupa podataka sadrži nedostajuće vrednosti. Njima ćemo se pozabaviti kasnije u odeljku **"Rad sa nedostajućim vrednostima"**.\
+```{r}
+str(data)
+```
+Funkcija **str** omogućava nam pregled strukture skupa podataka. Svi atributi skupa su numerički, od čega 10 atributa ima tip **int**, a preostala 3 tip **num**.
+
+Pre nego što pređemo na pripremu podataka, za numeričke atribute koji zapravo vrše klasifikaciju dodaćemo posebne kategorijske kolone, zahvaljujući čemu ćemo moći na pogodniji način da vizuelizujemo podatke u nastavku:
+
+```{r}
+data$anaemia_cat<-factor(NA,levels = c(0,1),labels = c("Nema anemiju","Ima anemiju"))
+data$anaemia_cat[which(data$anaemia==0)]="Nema anemiju"
+data$anaemia_cat[which(data$anaemia==1)]="Ima anemiju"
+```
+
+```{r}
+data$diabetes_cat<-factor(NA,levels = c(0,1),labels = c("Nema dijabetes","Ima dijabetes"))
+data$diabetes_cat[which(data$diabetes==0)]="Nema dijabetes"
+data$diabetes_cat[which(data$diabetes==1)]="Ima dijabetes"
+```
+
+```{r}
+data$high_blood_pressure_cat<-factor(NA,levels = c(0,1),labels = c("Nema povišen krvni pritisak","Ima povišen krvni pritisak"))
+data$high_blood_pressure_cat[which(data$high_blood_pressure==0)]="Nema povišen krvni pritisak"
+data$high_blood_pressure_cat[which(data$high_blood_pressure==1)]="Ima povišen krvni pritisak"
+```
+
+```{r}
+data$sex_cat<-factor(NA,levels = c(0,1),labels = c("Ž","M"))
+data$sex_cat[which(data$sex==0)]="Ž"
+data$sex_cat[which(data$sex==1)]="M"
+```
+
+```{r}
+data$smoking_cat<-factor(NA,levels = c(0,1),labels = c("Ne","Da"))
+data$smoking_cat[which(data$smoking==0)]="Ne"
+data$smoking_cat[which(data$smoking==1)]="Da"
+```
+
+```{r}
+data$DEATH_EVENT_cat<-factor(NA,levels = c(0,1),labels = c("Nije preminuo","Preminuo"))
+data$DEATH_EVENT_cat[which(data$DEATH_EVENT==0)]="Nije preminuo"
+data$DEATH_EVENT_cat[which(data$DEATH_EVENT==1)]="Preminuo"
+```
+
+```{r}
+data$age_cat<-factor("40-50",levels = c(0,1,2,3),labels = c("40-50","51-65","66-75","75+"))
+data$age_cat[data$age>=40 & data$age<=50]="40-50"
+data$age_cat[data$age>50 & data$age<=65]="51-65"
+data$age_cat[data$age>65 & data$age<=75]="66-75"
+data$age_cat[data$age>75]="75+"
+```
+
+```{r}
+str(data)
+```
+
+# Ispitivanje i vizuelizacija podataka
+
+## Kategorijske promenljive
+
+### Anemija
+
+```{r}
+summary(data$anaemia)
+```
+
+```{r}
+ggplot(data = data, aes(x = anaemia_cat)) +
+  geom_bar(stat = "count",mapping = aes(fill=anaemia_cat)) +
+  stat_count(geom = "text", colour = "black", size = 4.5, aes(label = ..count..), position = position_stack(vjust = 0.5))+
+  labs(title = "Odnos broja pacijenata sa i bez anemije",
+       x = "Anemija",
+       y = "Broj pacijenata") + guides(fill=guide_legend(title="Anemija"))
+```
+Sa grafika možemo primetiti da veći broj ispitanika nema anemiju. Tačan broj ispitanika koji nemaju, odnosno imaju anemiju dat je ispod uz pomoć funkcije **xtabs**:
+```{r}
+xtabs(~anaemia_cat, data=data)
+```
+
+### Dijabetes
+
+```{r}
+summary(data$diabetes)
+```
+
+```{r}
+xtabs(~diabetes, data=data)
+```
+Možemo primetiti da u ovoj koloni nemamo nedostajućih vrednosti, kao i da ima više ispitanika koji nemaju dijabetes. To možemo i vizuelizovati:
+
+```{r}
+ggplot(data = data, aes(x = diabetes_cat)) +
+  geom_bar(stat = "count",mapping = aes(fill=diabetes_cat)) +
+  stat_count(geom = "text", colour = "black", size = 4.5, aes(label = ..count..), position = position_stack(vjust = 0.5))+
+  labs(title = "Odnos broja ispitanika sa i bez dijabetesa",
+       x = "Dijabetes",
+       y = "Broj ispitanika") + guides(fill=guide_legend(title="Dijabetes"))
+```
+
+Iako veći broj ispitanika nisu imali/nemaju dijabetes, on sam po sebi može biti uzrok oslabljenog rada srca jer veoma negativno utiče na krvne sudove.
+
+### Hipertenzija
+Kao i do sada, prvo ćemo pogledati koje vrednosti imamo u skupu za ovaj atribut:
+
+```{r}
+xtabs(~high_blood_pressure, data=data)
+```
+```{r}
+summary(data$high_blood_pressure_cat)
+```
+Na osnovu ovoga vidimo da za atribut **high_blood_pressure** nemamo nekih neočekivanih ili nedostajućih vrednosti, kao i da većina ispitanika nema povišeni krvni pritisak.
+
+```{r}
+ggplot(data = data, aes(x = high_blood_pressure_cat)) +
+  geom_bar(stat = "count",mapping = aes(fill=high_blood_pressure_cat)) +
+  stat_count(geom = "text", colour = "black", size = 4.5, aes(label = ..count..), position = position_stack(vjust = 0.5))+
+  labs(title = "Odnos broja ispitanika sa i bez hipertenzije",
+       x = "Hipertenzija",
+       y = "Broj ispitanika") + guides(fill=guide_legend(title="Hipertenzija"))
+```
+
+### Pol
+
+```{r}
+xtabs(~sex, data=data)
+length(which(is.na(data$sex)))
+```
+Za parametar pol postoje tri NA vrednosti.
+
+```{r}
+xtabs(~sex_cat, data=data)
+```
+
+Vidimo da u skupu podataka imamo skoro dva puta više muških nego ženskih ispitanika.
+Prikazaćemo i grafički.
+```{r}
+ggplot(data = data, aes(x = sex_cat)) +
+  geom_bar(stat = "count",mapping = aes(fill=sex_cat)) +
+  stat_count(geom = "text", colour = "black", size = 4.5, aes(label = ..count..), position = position_stack(vjust = 0.5))+
+  labs(title = "Odnos broja žena i muškaraca",
+       x = "Pol",
+       y = "Broj ispitanika")
+```
+
+### Pušenje
+
+```{r}
+xtabs(~smoking, data=data)
+```
+Primećujemo da postoji vrednost 2 za pušenje koja nije validna jer su nepušači obeleženi sa 0 a pušači sa 1. Ovu vrednost ćemo predstaviti sa NA.
+```{r}
+data$smoking[which(data$smoking==2)]=NA
+length(which(is.na(data$smoking)))
+```
+
+```{r}
+ggplot(data = data, aes(x = smoking_cat)) +
+  geom_bar(stat = "count",mapping = aes(fill=smoking_cat)) +
+  stat_count(geom = "text", colour = "black", size = 4.5, aes(label = ..count..), position = position_stack(vjust = 0.5))+
+  labs(title = "Odnos broja pušača i nepušača",
+       x = "Da li je pušač",
+       y = "Broj ispitanika")
+```
+Sa grafika uočavamo da više od dve trećine ispitanika nisu pušači.
+
+## Numeričke promenljive
+
+### Starost
+
+```{r}
+xtabs(~age, data=data)
+```
+Uz pomoć **xtabs** funkcije mozemo da pogledamo neke vrednosti atributa age. Iz prikaza se moze videti da je zabeleženi broj godina za dva ispitanika iznosi 60.667. Kako nije praksa da se godine izražavaju u vidu realnih brojeva, prevešćemo ih u cele brojeve i posmatraćemo da pomenuti ispitanici imaju 60 godina.
+
+```{r}
+data$age[data$age==60.667] = 60
+xtabs(~age, data=data)
+```
+Možemo pogledati i raspored vrednosti ove kolone:
+
+```{r}
+ggplot(data = data, mapping = aes(x = age)) + geom_histogram(fill="skyblue", color="cornflowerblue", bins = 30) + labs(title = "Pregled godina ispitanika", x = "Broj godina", y = "Broj ispitanika")
+```
+Kako imamo i factor promenljivu za godine ispitanika, pogledaćemo i koliko ispitanika imamo po starosnim grupama.
+
+```{r}
+xtabs(~age_cat, data=data)
+```
+Vidimo da najmanje ispitanika imamo u grupi od 75+ godina, a najviše u grupi od 51 do 65 godina.
+
+```{r}
+ggplot(data = data, aes(x = age_cat)) +
+  geom_bar(stat = "count",mapping = aes(fill=age_cat)) +
+  stat_count(geom = "text", colour = "black", size = 4.5, aes(label = ..count..), position = position_stack(vjust = 0.5))+
+  labs(title = "Ispitanici po starosnim grupama",
+       x = "Starosne grupe",
+       y = "Broj ispitanika")
+```
+
+
+### CPK enzim u krvi
+
+```{r}
+xtabs(~creatinine_phosphokinase, data=data)
+```
+Iznad je prikazan pregled postojećih vrednosti za CPK enzim u krvi ispitanika.\
+
+Možemo primetiti i da je nivo CPK enzima za 2 ispitanika iznosi **0 mcg/L**. Kako ova vrednost nije moguća, pretvorićemo je u nedostajuću i kasnije dodeliti neku konkretnu vrednost.
+
+```{r}
+data$creatinine_phosphokinase[data$creatinine_phosphokinase==0] <- NA
+```
+
+Provera nedostajućih vrednosti:
+```{r}
+length(which(is.na(data$creatinine_phosphokinase)))
+```
+
+```{r}
+ggplot(data = data, mapping = aes(x = creatinine_phosphokinase)) + geom_histogram(fill="skyblue", color="cornflowerblue", bins = 30) + labs(title = "CPK enzim kod ispitanika", x = "CPK (mcg/L)", y = "Broj ispitanika")
+```
+
+Sa prikazanog histograma možemo zaključiti da najveći broj ispitanika ima CPK do 1000 mcg/L (grubo rečeno). Možemo primetiti i da imamo neke vrlo visoke vrednosti ovog parametra, što potencijalno mogu biti outlier-i. Proverićemo ovo u odeljku **Izuzeci**.
+
+### Ejekciona frakcija
+
+Kao što je napomenuto u uvodu, autribut **ejection_fraction** predstavlja procenat krvi koja napušta srce pri svakoj kontrakciji. Kako su vrednosti date u vidu procenata, za očekivati je da one mogu biti u opsegu od 0 do 100, a uzimajući u obzir da je u pitanju parametar vezan za ljudski organizam, znamo takođe da vrednosti ne mogu biti drastično niske ili drastično visoke u ovom opsegu. Pogledaćemo postojeće vrednosti uz pomoć **xtabs**:
+
+```{r}
+xtabs(~ejection_fraction, data=data)
+```
+```{r}
+summary(data$ejection_fraction)
+```
+U skladu sa očekivanjima, minimalna vrednost atributa iznosi 14, a maksimalna 80.\
+
+Normalne vrednosti ovog parametra iznose **između 50% i 75%**. Kako ovaj procenat opada, to se srčana insuficijencija pogoršava. EF ispod 30% predstavlja relativno ozbiljnu oslabljenost srca, dok 20% ili niže predtavlja veoma tešku srčanu insuficijenciju. EF iznad 75% smatra se previsokim i takođe predstavlja zaseban problem, jer može dovesti do srčanog zastoja.
+
+
+```{r}
+ggplot(data = data, mapping = aes(x = ejection_fraction)) + geom_histogram(fill="skyblue", color="cornflowerblue", bins = 10) + labs(title = "Ispumpavanje krvi pri svakoj kontrakciji", x = "Krv koja napušta srce (%)", y = "Broj ispitanika")
+```
+Sa histograma možemo zaključiti da najveći broj ispitanika ima EF **između 20% i 40%**, što zaista predstavlja oslabljen rad srca koji vodi ka njegovom otkazivanju. Takođe, ono što se može videti sa grafika i preko funkcija **xtabs** i **summary**, jeste da deo ispitanika ima ove vrednosti u granicama normale, ili vrednosti koje su pak povišene.
+
+### Trombociti u krvi
+
+Trombociti (krvne ploče) su krvne ćelije čija je glavna uloga u hemostazi tj. zaustavljanju krvarenja prilikom povrede krvog suda.
+
+```{r}
+summary(data$platelets)
+```
+
+```{r}
+ggplot(data=data) + 
+  geom_histogram(fill = "skyblue", color = "cornflowerblue",aes(x=platelets), bins=50)+
+  labs(title = "Količina trombocita u krvi",
+       x = "Trombociti (k/mcl)",
+       y = "Broj ispitanika")
+```
+Možemo primetiti da imamo manji broj vrednosti za trombocite koje su izuzetno velike. Da pogledamo.
+```{r}
+data$platelets[which(data$platelets>1e+06)]
+which(data$platelets>1e+06)
+```
+```{r}
+data[which(data$platelets>1e+06),]
+```
+
+Na osnovu domenskog znanja možemo zaključiti da se najverovatnije radi o grešci prilikom unosa podataka. Oba ispitanika su anemični, što dovodi do smanjenja broja trombocita u nekim slučajevima. Takodje, broj trombocita u krvi sa kreće u stotinama hiljada čak i kada je povišen broj. Zaključujemo da je najverovatnije uneta nula više, što ćemo ispraviti.
+
+```{r}
+data$platelets[which(data$platelets>1e+06)] = data$platelets[which(data$platelets>1e+06)]/10
+```
+
+Provera:\
+```{r}
+data$platelets[c(302,307)]
+```
+
+```{r}
+summary(data$platelets)
+```
+
+Nacrtaćemo ponovo graf.
+```{r}
+ggplot(data=data) + 
+  geom_histogram(fill = "skyblue", color = "cornflowerblue",aes(x=platelets), bins=50)+
+  labs(title = "Količina trombocita u krvi",
+       x = "Trombociti (k/mcl)",
+       y = "Broj ispitanika")
+```
+
+
+Uočavamo nesvakidašnje vrednosti koje su relativno bliske nuli kao i vrednosti koje su dosta velike (preko 600000). Iako neobične, nisu nemoguće pa ćemo se dalje baviti njima u odeljku **Izuzeci** gde ćemo ispitati da li su outlier-i.
+
+### Kreatinin u krvi
+
+Kreatinin je hemijsko jedinjenje koje nastaje tokom procesa stvaranja energije u mišićima. Kako se zadržava u krvi, a tu je nepotrebna (čak i škodno ukoliko se nalazi u velikim količinama), naši bubrezi je filtriraju. Dobar je pokazatelj koliko zdravlja i funkcionalnosti bubrega.
+
+```{r}
+summary(data$serum_creatinine)
+```
+
+
+```{r}
+length(which(is.na(data$serum_creatinine)))
+```
+Uočavamo da postoji dve nepoznate vrednosti za kreatinin.
+
+Nacrtaćemo grafik:
+```{r}
+ggplot(data=data) + 
+  geom_histogram(aes(x=serum_creatinine), bins=50,fill = "skyblue", color = "cornflowerblue")+
+  labs(title = "Količina kreatinina u krvi",
+       x = "Kreatinin (mg/dl)",
+       y = "Broj ispitanika")
+```
+Na grafiku postoje vrednosti za kreatinin koje su 0, što je nemoguće. Te vrednosti zamenićemo sa NA.
+```{r}
+which(data$serum_creatinine==0)
+```
+```{r}
+data$serum_creatinine[which(data$serum_creatinine==0)] = NA
+```
+
+Prikazaćemo graf nakon izmena:
+```{r}
+ggplot(data=data) + 
+  geom_histogram(aes(x=serum_creatinine), bins=50,fill = "skyblue", color = "cornflowerblue")+
+  labs(title = "Količina kreatinina u krvi",
+       x = "Kreatinini (mg/dl)",
+       y = "Broj ispitanika")
+```
+Na grafu iznad, uočavamo veoma visoke količine kreatinina u krvi. Iako neuobičajene, nisu nemoguće, pa ćemo u delu **Izuzeci** ispitati da li su te outlier-i ili ne.
+```{r}
+data$serum_creatinine[which(data$serum_creatinine>5)]
+which(data$serum_creatinine>5)
+```
+
+
+### Natrijum u krvi
+
+Natrijum u organizmu učestvuje u velikom broju procesa od kojih su za naš rad najbitniji regulisanje krvnog pritiska i održavanje normalnog rada srčanog mišića.
+
+```{r}
+summary(data$serum_sodium)
+```
+
+```{r}
+ggplot(data=data) + 
+  geom_histogram(aes(x=serum_sodium), bins=50,fill = "skyblue", color = "cornflowerblue")+
+  labs(title = "Količina natrijuma u krvi",
+       x = "Natrijum (mEq/l)",
+       y = "Broj ispitanika")
+```
+Uočavamo na grafiku da postoji mali broj ispitanika sa nivoima natrijuma nešto višim i dosta nižim od većine ostalih ispitanika. U delu **Izuzeci** ćemo proveriti da li su u pitanju outlier-i. 
+
+### Propratni period posmatranja
+
+```{r}
+length(which(is.na(data$time)))
+```
+Postoje dve NA vrednosti za propratni period.
+```{r}
+ggplot(data=data) + 
+  geom_histogram(fill = "skyblue", color = "cornflowerblue",aes(x=time), bins=50)+
+  labs(title = "Broj dana propratnog perioda",
+       x = "Broj dana",
+       y = "Broj ispitanika")
+```
+# Rad sa nedostajućim vrednostima
+
+Pogledaćemo u kojim kolonama imamo nedostajuće vrednosti:
+
+```{r}
+sapply(data[,1:13], function(x) sum(is.na(x)))
+```
+Posmatramo samo 13 originalnih kolona. Ostale su dodate tokom rada i predstavljaju njihov duplikat pa su samim tim ovde suvišne.
+```{r}
+par(mfrow=c(1,2))
+missmap(obj = data[,1:13], main = "Pregled nedostajućih vresnosti   ", legend = FALSE)
+par(mfrow=c(1,1))
+```
+Proverićemo, takođe, da li u redovima u kojima postoji nedostajuća vrednost ima više kolona sa nedostajućim vrednostima:
+
+
+```{r}
+gg_miss_upset(data[,1:13])
+```
+Na grafiku vidimo da postoje dva reda (ispitanika) koji imaju NA vrednosti za po četiri parametra. Hajde da ih pogledamo:
+```{r}
+data[which(is.na(data$time)),1:13]
+```
+Ispitanici, dakle imaju nedostajuće vrednosti za iste parametre a prvi, dodatno, i za anemiju. 
+Kako oboma nedostaje trećina ili više informacija, odlučili smo da kolone uklonimo iz skupa. Zahvaljujući poklapanju redova (ispitanika) kod kojih su se našle ove NA vrednosti, nećemo izgubiti previše podataka.
+
+Pregled nedostajućih vrednosti nakon uklanjanja redova:
+```{r}
+data = data[-which(is.na(data$time)),]
+```
+```{r}
+sapply(data[,1:13], function(x) sum(is.na(x)))
+```
+
+
+## Kategorijske promenljive sa malim brojem nedostajućih vrednosti
+
+### Anemija
+
+```{r}
+length(which(is.na(data$anaemia)))
+```
+Imamo jednu nedostajuću vrednost za anemiju. Pogledaćemo taj red.
+
+```{r}
+data[which(is.na(data$anaemia)),1:13]
+```
+Uglavnom kada imamo mali broj nedostajućih vrednosti kod neke kategorijske promenljive, praksa je da se one zamene najdominantnijom klasom. To u ovom slučaju možemo bez problema uraditi, jer jedna vrednost neće imati bitan uticaj na nastavak rada sa skupom i predviđanje.
+
+```{r}
+xtabs(~anaemia_cat, data=data)
+```
+Možemo primetiti da većina ispitanika nema anemiju, što bi značilo da i za posmatranog ispitanika možemo da pretpostavimo da nema anemiju. Ali kako znamo da anemija utiče na broj trombocita u krvi, kao i da anemija može biti izazvana ako je kreatinin visok, možemo na osnovu ova dva parametra preciznije odrediti da li ispitanik ima ili nema anemiju. Ispitanik ima 265000 trombocita i vrednost 0.8 za kreatinin. 
+
+Znamo da broj trombocita u krvi koji je ispod 140000 obično ukazuje na anemiju. Naš ispitanik ima skoro duplo više, što već samo po sebi govori da verovatno nema anemiju. Sa druge strane, vrednosti kreatinina u krvi koje se smatraju normalnim razlikuju se u zavisnosti od pola. Kod žena, normalan opseg iznosi 0.59-1.04 mg/dl, a kod muškaraca 0.74-1.35 mg/dl. Osoba koju posmatramo nema zabeležen pol, ali kako je vrednost kreatinina 0.8, ta vrednost se smatra normalnom i kod muškaraca i kod žena, pa i prema ovom parametru možemo pretpostaviti da osoba nema anemiju. Možemo preći na zamenu NA ovom klasom i za originalnu kolonu, i za njoj ekvivalentnu kategorijsku kolonu.
+
+```{r}
+data$anaemia[is.na(data$anaemia)] = 0
+```
+
+Provera:\
+```{r}
+length(which(is.na(data$anaemia)))
+```
+Kategorijska kolona i dalje ima nedostajuću vrednost, zamenićemo i nju.
+```{r}
+length(which(is.na(data$anaemia_cat)))
+```
+```{r}
+data$anaemia_cat[is.na(data$anaemia_cat)] = "Nema anemiju"
+```
+
+Provera:\
+```{r}
+length(which(is.na(data$anaemia_cat)))
+```
+
+### Pol
+
+```{r}
+length(which(is.na(data$sex)))
+```
+Nakon uklanjanja redova, vidimo da nam je ostala samo jedna NA vrednost za parametar pol. Da pogledamo taj red:
+```{r}
+data[which(is.na(data$sex)),1:13]
+```
+Uobičajen način hendlovanja ovakvih vrednosti jeste da se popune najdominantnijom klasom. Medjutim, kako bi bili što tačniji, posmatraćemo još neke parametre koji su u zavisnosti sa polom kako bi ga odredili. Primećujemo i da ispitanik ima 76 godina, pa ćemo posmatrati odgovarajuću starosnu grupu.
+
+Upotrebnom uobičajenog hendlovanja bi izveli sledeći zaključak:
+```{r}
+xtabs(~sex_cat, data=data)
+```
+Ispitanik pripada muškom polu.
+
+Primenićemo i drugačiju metodu da vidimo šta bismo dobili.
+Iz domenskog znanja znamo da od pola zavisi broj trombocita u krvi, nivo kreatinina u krvi i pritisak.
+Za sva tri parametra koristićemo princip sličan k najbližih suseda. Centar ćemo postaviti u vrednosti parametra ispitanika čiji je pol nepoznat i zatim ćemo "opisati krug"(prečnik je neka proizvoljna tolerancija). Pol ispitanika će biti onaj čija je klasa u "krugu" najbrojnija.
+```{r}
+platelets_sex=data[which(data$age_cat=="75+" & !is.na(data$sex) & data$platelets>=260000 & data$platelets<=270000),]
+ggplot(platelets_sex, aes(x = platelets, y=age_cat)) + 
+  geom_point(size = 3, alpha = 0.3)+
+  facet_wrap(~sex_cat,nrow = 2)+ 
+  labs(title = "Trombociti u krvi u odnosu na pol", x = "Kreatinin", y = "Starosna grupa")
+```
+Zapažamo da imamo 3 muškarca i jednu ženu. (Tamnija tačka nam govori da postoji preklapanje)
+
+```{r}
+creatinine_sex=data[which(data$age_cat=="75+" & !is.na(data$sex) & data$serum_creatinine>=1.4 & data$serum_creatinine<=2.4),]
+ggplot(creatinine_sex, aes(x = serum_creatinine, y=age_cat)) + 
+  geom_point(size = 3, alpha = 0.3)+
+  facet_wrap(~sex_cat,nrow = 2)+ 
+  labs(title = "Kreatinin u krvi u odnosu na pol", x = "Kreatinin", y = "Starosna grupa")
+```
+I na ovom grafiku uočavamo više pripadnika muškog pola.
+
+```{r}
+hbp=data[which(data$age_cat=="75+" & !is.na(data$sex) & data$high_blood_pressure==1),]
+ggplot(hbp) +
+  geom_count(mapping = aes(x=sex_cat,y=high_blood_pressure_cat))+ 
+  labs(title = "Pritisak u odnosu na pol", x = "Pol", y = "Pritisak")
+```
+Na trećem grafiku takodje dominira muški pol.
+
+Zaključujemo da ispitanik najverovatnije pripada upravo muškom polu. (Identičan rezultat smo dobili sa obe metode) 
+```{r}
+data$sex[300]=1
+data$sex_cat[300]="M"
+```
+```{r}
+data[300,]
+```
+
+### Pušenje
+
+```{r}
+length(which(is.na(data$smoking)))
+```
+```{r}
+data[which(is.na(data$smoking)),]
+```
+Vidimo da je naš ispitanik muškarac od 60 godina. Shodno tome, posmatraćemo muškarce koji pripadaju istoj starosnoj grupi.
+Nedostajuću vrednost ćemo popuniti na sličan način kao i za parametar pol.
+```{r}
+xtabs(~smoking_cat, data=data[data$sex==1,])
+```
+Najbrojniji u skupu su nepušači. Ovom tehnikom bi ispitanik bio nepušač.
+
+Zahvaljujući domenskom znanju, znamo da pušenje može da utiče na broj trombocita u krvi, nivo kreatinina u krvi, pritisak i pojavu dijabetesa. Navedene parametre ćemo posmatrati kako bi odredili da li je ispitanik pušač ili ne.
+
+```{r}
+platelets_smoking=data[which(data$age_cat=="51-65" & !is.na(data$smoking) & data$platelets>=157000 & data$platelets<=167000 & data$sex_cat=="M"),]
+ggplot(platelets_smoking, aes(x = platelets, y=age_cat)) + 
+  geom_point(size = 3, alpha = 0.3)+
+  facet_wrap(~smoking_cat,nrow = 2)+ 
+  labs(title = "Trombociti u krvi u odnosu na pušenje", x = "Kreatinin", y = "Starosna grupa")
+```
+Imamo samo jednog najbližeg suseda i prema tome bi ispitanik od interesa se klasifikovao kao pušač.
+Da pogledamo kakva će situacija biti ako uvećamo prečnik kruga koji posmatramo.
+
+```{r}
+platelets_smoking2=data[which(data$age_cat=="51-65" & !is.na(data$smoking) & data$platelets>=152000 & data$platelets<=172000 & data$sex_cat=="M"),]
+ggplot(platelets_smoking2, aes(x = platelets, y=age_cat)) + 
+  geom_point(size = 3, alpha = 0.3)+
+  facet_wrap(~smoking_cat,nrow = 2)+ 
+  labs(title = "Trombociti u krvi u odnosu na pušenje", x = "Kreatinin", y = "Starosna grupa")
+```
+
+Vidimo da je situacija gotovo identična.
+
+```{r}
+creatinine_smoking=data[which(data$age_cat=="51-65" & !is.na(data$smoking) & data$serum_creatinine>=0.8 & data$serum_creatinine<=1.8 & data$sex_cat=="M"),]
+ggplot(creatinine_smoking, aes(x = serum_creatinine, y=age_cat)) + 
+  geom_point(size = 3, alpha = 0.3)+
+  facet_wrap(~smoking_cat,nrow = 2)+ 
+  labs(title = "Kreatinin u krvi u odnosu na pušenje", x = "Kreatinin", y = "Starosna grupa")
+```
+```{r}
+xtabs(~smoking_cat, data=creatinine_smoking)
+```
+Za parametar kreatinin imamo više nepušača.
+
+```{r}
+hbps=data[which(data$age_cat=="51-65" & !is.na(data$smoking) & data$high_blood_pressure==0 & data$sex_cat=="M"),]
+ggplot(hbps) +
+  geom_count(mapping = aes(x=smoking_cat,y=high_blood_pressure_cat))+ 
+  labs(title = "Krvni pritisak u odnosu na pušenje", x = "Pošenje", y = "Pritisak")
+```
+Sa grafika vidimo da je ispitivač najverovatnije pušač.
+
+```{r}
+ds=data[which(data$age_cat=="51-65" & !is.na(data$smoking) & data$diabetes==0 & data$sex_cat=="M"),]
+ggplot(ds) +
+  geom_count(mapping = aes(x=smoking_cat,y=diabetes_cat))+ 
+  labs(title = "Dijabetes u odnosu na pušenje", x = "Pošenje", y = "Dijabetes")
+```
+Sa ovog grafika se takodje vidi da je ispitanik najverovatnije pušač.
+
+Na osnovu rezultata prethodnih grafika možemo zaključiti da je ispitanik najverovatnije pušač.
+
+```{r}
+data$smoking[301]=1
+data$smoking_cat[301]="Da"
+```
+```{r}
+data[301,]
+```
+
+
+## Numeričke promenljive sa malim brojem nedostajućih vrednosti
+
+### Starost
+Nedostajuće vrednosti za starost ispitanika:
+```{r}
+length(which(is.na(data$age)))
+```
+Možemo primetiti da imamo samo jednu nedostajuću vrednost, pa ćemo je pogledati:
+```{r}
+data[which(is.na(data$age)),1:13]
+```
+
+Jedna od opcija je da samo uzmemo prosečnu vrednost godina svih ispitanika i njome zamenimo nedostajuću vrednost, jer kako je samo jedan red u pitanju, to neće imati bitan uticaj na nastavak rada sa skupom. Međutim, postoji bolji način. Kako znamo da broj trombocita u krvi zavisi od životnog doba i pola, možemo na osnovu poznatog pola i broja trombocita odrediti nepoznate godine ispitanika. Na broj trombocita, na osnovu domenskog znanja utiče i anemija, ali kako iz prikaza vidimo da ispitanik nema anemiju, možemo slobodno da se oslonimo na pol i trombocite. Vidimo da je osoba muškog pola i da ima 147000	trombocita u krvi.\
+
+Kako bismo što preciznije odredili broj godina ispitanika, pronaći ćemo u skupu ispitanike koji su takođe muškog pola, koji nemaju anemiju i koji imaju sličan broj trombocita (±5000), a potom uzeti prosečnu vrednost njihovih godina.
+
+```{r}
+similar_respondents=data[which(data$sex==1 & !is.na(data$age) & data$anaemia==0 & data$platelets>=142000 & data$platelets<=152000),]
+```
+
+Pogledajmo ispitanike koji su slični posmatranom.
+
+```{r}
+similar_respondents
+```
+Pronašli smo 6 ispitanika. Proverićemo prvo distribuciju podataka.
+
+```{r}
+shapiro.test(similar_respondents$age)
+```
+
+P-value je veće od 0.05, na osnovu čega znamo da za pronalaženje prosečne vrednosti nećemo koristiti median, već mean funkciju. Prosečna vrednost godina ispitanika sa sličnim osobinama iznosi:
+```{r}
+as.integer(mean(similar_respondents$age))
+brGodina = as.integer(mean(similar_respondents$age))
+```
+Dobili smo prosečan broj godina - 66. Zamenićemo NA sa ovom vrednošću:
+
+```{r}
+data$age[is.na(data$age)] = brGodina
+```
+
+Provera da li smo uspešno upisali broj godina:
+```{r}
+length(which(is.na(data$age)))
+```
+Vidimo da je sada broj nedostajućih vrednosti 0 u ovoj koloni, dodatno u skladu sa ovim zaključkom treba zameniti i nedostajuću vrednost koja postoji u koloni age_cat.
+
+```{r}
+length(which(is.na(data$age_cat)))
+```
+
+```{r}
+data$age_cat[is.na(data$age_cat)] = "66-75"
+```
+
+Provera:
+```{r}
+length(which(is.na(data$age_cat)))
+```
+
+### CPK enzim u krvi
+
+Nedostajuće vrednosti za kreatin kinazu:
+
+```{r}
+length(which(is.na(data$creatinine_phosphokinase)))
+```
+Nedostaju nam vrednosti CPK enzima za dva ispitanika, pogledajmo te redove:
+
+```{r}
+data[which(is.na(data$creatinine_phosphokinase)),1:13]
+```
+
+```{r}
+which(is.na(data$creatinine_phosphokinase))
+```
+
+
+Pošto znamo da količina ovog enzima u krvi zavisi od starosti i pola, pokušaćemo da pronađemo ispitanike koji imaju isti pol i pripadaju istoj starosnoj grupi za svakog od ova dva ispitanika.
+
+**Prvi ispitanik** \
+Prvi ispitanik je ženskog pola i ima 40 godina. Potražićemo osobe sa 40-50 godina koje su ženskog pola. Takođe, kako u skupu imamo i vrlo visoke vrednosti CPK enzima koje su moguće ali najčešće ukazuju na neku povredu, izuzećemo ispitanike kod kojih je CPK previsok (>= 5000 mcg/L).
+
+```{r}
+f_40_50=data[which(data$sex==0 & data$age_cat=="40-50" & data$creatinine_phosphokinase<=5000 & !is.na(data$creatinine_phosphokinase)),]
+f_40_50
+```
+Iskoristićemo Šapirov test da proverimo distribuciju podataka, na osnovu čega ćemo znati da li treba da iskoristimo mean ili median za prosečnu vrednost koju tražimo.
+```{r}
+shapiro.test(f_40_50$creatinine_phosphokinase)
+```
+P-value je znatno manje od 0.05, što nam govori da nemamo normalnu distribuciju podataka i da treba da koristimo median. U suprotnom bismo koristili mean.
+
+Izračunaćemo prosečnu vrednost kreatin kinaze od prikazanih 31 ispitanika, i nedostajuću vrednost zameniti njom.
+
+```{r}
+as.integer(median(f_40_50$creatinine_phosphokinase))
+meanCPK = as.integer(median(f_40_50$creatinine_phosphokinase))
+```
+
+```{r}
+data$creatinine_phosphokinase[which(data$sex==0 & is.na(data$creatinine_phosphokinase))] = meanCPK
+data[308,]
+```
+Vidimo da smo uspešno popunili nedostajuću vrednost, i sada bi trebalo da nam je ostala još samo jedna.
+
+```{r}
+length(which(is.na(data$creatinine_phosphokinase)))
+```
+Preostalu nedostajuću vrednost odredićemo na sličan način.
+
+**Drugi ispitanik** \
+Drugi ispitanik je muškog pola i ima 65 godina. Potražićemo osobe sa 51-65 godina koje su muškog pola. Kao i u prethodnom slučaju, izuzećemo ispitanike kod kojih je CPK previsok (>= 5000 mcg/L).
+
+```{r}
+m_51_65=data[which(data$sex==1 & data$age_cat=="51-65" & data$creatinine_phosphokinase<=5000 & !is.na(data$creatinine_phosphokinase)),]
+m_51_65
+```
+Pronašli smo 90 ispitanika sa sličnim osobinama, iskoristićemo Šapirov test da proverimo distribuciju podataka.
+
+```{r}
+shapiro.test(m_51_65$creatinine_phosphokinase)
+```
+P-value je dosta manje od 0.05, što nam govori da ponovo nemamo normalnu distribuciju podataka i da treba da koristimo median.
+
+```{r}
+as.integer(median(m_51_65$creatinine_phosphokinase))
+meanCPK2 = as.integer(median(m_51_65$creatinine_phosphokinase))
+```
+Nedostajuću vrednost zamenićemo prosečnom vrednošću koju smo dobili iznad.
+
+```{r}
+data$creatinine_phosphokinase[which(data$sex==1 & is.na(data$creatinine_phosphokinase))] = meanCPK2
+data[311,]
+```
+Provera:
+
+```{r}
+length(which(is.na(data$creatinine_phosphokinase)))
+```
+### Ejekciona frakcija
+
+```{r}
+length(which(is.na(data$ejection_fraction)))
+```
+Imamo samo jednu nedostajuću vrednost, pa ćemo je pogledati:
+```{r}
+data[which(is.na(data$ejection_fraction)),1:13]
+```
+
+Ejekciona frakcija može zavisiti od pola, hipertenzije i pušenja.
+
+```{r}
+ggplot(data = data, mapping = aes(x = ejection_fraction, y=sex_cat)) + geom_boxplot() + labs(title = "Pol i ejekciona frakcija", x = "Ejekciona frakcija")
+```
+Vidimo da osobe ženskog pola iz našeg skupa podataka imaju višu ejekcionu frakciju.
+
+```{r}
+ggplot(data = data, mapping = aes(x = ejection_fraction, y=high_blood_pressure_cat)) + geom_boxplot() + labs(title = "Hipertenzija i ejekciona frakcija", x = "Ejekciona frakcija")
+```
+
+```{r}
+ggplot(data = data, mapping = aes(x = ejection_fraction, y=smoking_cat)) + geom_boxplot() + labs(title = "Pušenje i ejekciona frakcija", x = "Ejekciona frakcija")
+```
+Odavde možemo zaključiti da nepušači imaju višu ejekcionu frakciju. 
+
+Iskoristićemo atribute pol i pušenje da odredimo najbolju moguću vrednost kojom ćemo zameniti nedostajuću. Ispitanik kome nedostaje vrednost za ejekcionu frakciju je muškog pola i nije pušac. Pronaći ćemo njemu slične ispitanike.
+
+```{r}
+similar_respondents_ef=data[which(data$sex==1 & data$smoking==0 & !is.na(data$ejection_fraction)),]
+similar_respondents_ef
+```
+Sada kada imamo ispitanike sa sličnim osobinama, proverićemo distribuciju podataka.
+
+```{r}
+shapiro.test(similar_respondents_ef$ejection_fraction)
+```
+Kako je p-value ispod 0.05, to znači da ćemo i ovog puta iskoristiti median.
+
+```{r}
+as.integer(median(similar_respondents_ef$ejection_fraction))
+ef_median = as.integer(median(similar_respondents_ef$ejection_fraction))
+```
+Zamenićemo NA sa ovom vrednošću:
+
+```{r}
+data$ejection_fraction[is.na(data$ejection_fraction)] = ef_median
+```
+
+Provera:
+```{r}
+length(which(is.na(data$ejection_fraction)))
+```
+
+### Kreatinin
+
+```{r}
+length(which(is.na(data$serum_creatinine)))
+```
+Imamo tri vrste sa nedostajućim vrednostima za kreatinin.
+
+```{r}
+data[which(is.na(data$serum_creatinine)),]
+```
+```{r}
+which(is.na(data$serum_creatinine))
+```
+
+Iz domenskog znanja, poznato nam je da na nivoe kreatinina u krvi mogu da utiču starost i pol ispitanika, da li ima anemiju, da li je dijabetičar, da li pati od visokog krvnog pritiska i da li je pušač.
+
+U prethodno prikazanim redovima, vidimo da se radi o dve muške osobe i jednoj ženskoj. Muške osobe su u različitim starosnim grupama pa ćemo i za njih posebno morati da računamo vrednost kojom ćemo zameniti nedostajuću.
+
+```{r}
+scf = data[which(data$sex_cat=="Ž" & data$age_cat=="40-50" & data$anaemia==0 & data$diabetes==1 & data$high_blood_pressure==1 & data$smoking==0 & !is.na(data$serum_creatinine)),]
+```
+
+Sada ćemo **Šapirovim testom normalnosti** odrediti da li je raspodela podataka normalna ili ne. Na taj način utvrdjujemo da li za nedostajuću vrednost uzimamo **mean** ili **median**.
+```{r}
+shapiro.test(scf$serum_creatinine)
+```
+Kako je vrednost p veća od praga 0.05, zaključujemo da je raspodela normalna pa ćemo koristiti mean vrednost za popunjavaje nedostajuće kod ženskog ispitanika.
+
+```{r}
+scfmean=mean(scf$serum_creatinine)
+data$serum_creatinine[308] = scfmean
+data[308,]
+```
+Isti postupak ponavljamo za preostala dva ispitanika.
+
+```{r}
+scm1 = data[which(data$sex_cat=="M" & data$age_cat=="40-50" & data$anaemia==0 & data$diabetes==1 & data$high_blood_pressure==1 & data$smoking==0 & !is.na(data$serum_creatinine)),]
+```
+```{r}
+shapiro.test(scm1$serum_creatinine)
+```
+Vrednost p je veća od 0.05, dakle, NA vrednost popunjavamo sa mean vrednošću.
+```{r}
+scm1mean=mean(scm1$serum_creatinine)
+data$serum_creatinine[307] = scm1mean
+data[307,]
+```
+
+```{r}
+scm2 = data[which(data$sex_cat=="M" & data$age_cat=="51-65" & data$anaemia==1 & data$diabetes==0 & data$high_blood_pressure==0 & data$smoking==1 & !is.na(data$serum_creatinine)),]
+```
+```{r}
+shapiro.test(scm2$serum_creatinine)
+```
+I ovde je vrednost p veća od praga, dakle popunjavamo mean vrednošću.
+```{r}
+scm2mean=mean(scm2$serum_creatinine)
+data$serum_creatinine[312] = scm2mean
+data[312,]
+```
+
+Prikazaćemo grafik nakon hendlovanja NA vrednosti:
+```{r}
+ggplot(data=data) + 
+  geom_histogram(aes(x=serum_creatinine), bins=50,fill = "skyblue", color = "cornflowerblue")+
+  labs(title = "Količina kreatinina u krvi",
+       x = "Kreatininii (mg/dl)",
+       y = "Broj ispitanika")
+```
+S obzirom da nismo imali veliki broj NA, samim tim nismo dodali mnogo vrednosti koje bi mogle da naruše raspodelu i raznovrsnost podataka za ovaj parametar.
+
+```{r}
+sapply(data, function(x) sum(is.na(x)))
+```
+
+# Izuzeci
+
+### Starost
+
+```{r}
+summary(data$age)
+```
+Minimum i maksimum vrednosti za godine ispitanika nam govori da u skupu podataka najverovatnije nemamo odstupanja koja bi mogla uticati na kvalitet predviđanja, ali to možemo proveriti i grafički. Boxplot predstavlja dobar izbor jer na njemu lako možemo detektovati netipične vrednosti.
+
+```{r}
+ggplot(data = data, mapping = aes(x = age)) + geom_boxplot() + labs(title = "Pregled godina ispitanika", x = "Broj godina")
+```
+Zaključujemo da nema netipičnih vrednosti za starost.
+
+### CPK enzim u krvi
+
+Na osnovu domenskog znanja, normalne vrednosti ovog enzima u krvi iznose **između 10 i 120 mcg/L**. Sve preko toga smatra se povišenim, a rezultati koji prelaze **5000 mcg/L** smatraju se zabrinjavajućim. Povišen nivo ovog enzima u krvi može, između ostalog, biti indikator srčanih problema i potencijalnog otkaza srca koji predviđamo.\
+Prisetimo se rasporeda vrednosti ovog enzima u skupu podataka:
+
+```{r}
+ggplot(data = data, mapping = aes(x = creatinine_phosphokinase)) + geom_histogram(fill="skyblue", color="cornflowerblue", bins = 30) + labs(title = "CPK enzim kod ispitanika", x = "CPK (mcg/L)", y = "Broj ispitanika")
+```
+
+Vrednosti preko 4000 mcg/L mogu na prvi pogled delovati kao outlier-i, ali su i takve vrednosti moguće ukoliko npr. ispitanici imaju neku povredu.\
+
+Kreatin kinaza (CPK) zavisi od starosti i pola ispitanika.
+
+```{r}
+ggplot(data, aes(x = creatinine_phosphokinase, y = DEATH_EVENT_cat, fill = sex_cat)) +
+  geom_boxplot(outlier.colour = "orange") + 
+  labs(title = "Nivo CPK enzima prema smrtnom ishodu", x = "Kreatin kinaza (mcg/L)", y = "Smrtni ishod")+
+  facet_wrap(~age_cat,nrow = 2)
+```
+Možemo primetiti da za najveći broj ispitanika kreatin kinaza ne prelazi 1000 mcg/L. Kao što je već napomenuto, sve vrednosti preko 120 mcg/L predstavljaju povišen nivo ovog enzima. Svaka povreda ili oštećenje mozga, srca ili skeletnih mišića može da izazove povišen CPK, samim tim razlozi za povišen CPK kod ispitanika mogu varirati. Najčešći slučaj u realnosti je da se dogodila povreda mišićnog tkiva. Sa grafika možemo očitati i neke jako visoke vrednosti kreatin kinaze koje boxplot detektuje kao outlier-e, ali kako one nisu nemoguće, nećemo ih smatrati netipičnim.\
+
+### Ejekciona frakcija
+
+```{r}
+ggplot(data = data, mapping = aes(x = ejection_fraction)) + geom_boxplot(outlier.colour = "red") + labs(title = "Ispumpavanje krvi pri svakoj kontrakciji", x = "Krv koja napušta srce (%)", y = "Broj ispitanika")
+```
+Sa prikazanog boxplot-a možemo primetiti da imamo vrednosti koje su obeležene kao outlier-i. Međutim, ove vrednosti su itekako moguće i važno je ostaviti ih u skupu iako nisu indikator slabljenja srca. One mogu predstavljati znak nekih drugih oboljenja i mogu pomoći našem modelu prilikom predviđanja otkaza rada srca.\
+
+Niske vrednosti mogu predstavljati ozbiljan problem. Ukoliko ejekciona frakcija iznosi 35% ili manje, postoji veliki rizik od razvoja aritmije ili srčane insuficijencije. Bitno je napomenuti da i ljudi sa normalnim vrednostima ejekcione frakcije mogu razviti srčanu slabost.\
+
+Na osnovu domenskog znanja, čest je slučaj da srce u većoj ili manjoj meri slabi u starosti. Zato ćemo posmatrati grafik ispod:
+
+```{r}
+ggplot(data, aes(x = ejection_fraction, y = DEATH_EVENT_cat, fill = age_cat)) +
+  geom_boxplot(outlier.colour = "orange") + 
+  labs(title = "Ejekciona frakcija prema smrtnom ishodu", x = "Ejekciona frakcija (%)", y = "Smrtni ishod")
+```
+```{r}
+ggplot(data, aes(x = ejection_fraction, y = age_cat)) +
+  geom_boxplot(outlier.colour = "orange") + 
+  labs(title = "Ejekciona frakcija prema starosnoj grupi", x = "Ejekciona frakcija (%)", y = "Starosna grupa")
+```
+
+Možemo primetiti da većina ispitanika ima oslabljen rad srca (ispod 50%). Većina odstupanja koja su ucrtana na grafiku zapravo predstavljaju normalne ili povišene vrednosti za ejekcionu frakciju, koje iz iznad navedenih razloga ne bi trebalo ukloniti iz skupa. Imamo i jednu dosta nisku vrednost na grafiku, što znači da je u pitanju ozbiljna srčana insuficijencija, i ta osoba jeste preminula. Na osnovu datih podataka i grafika takođe možemo doći do zaključka da nema značajne korelacije između starosti i oslabljenog rada srca, iako smo pretpostavili da će to biti slučaj.
+
+### Trombociti u krvi
+
+```{r}
+ggplot(data, aes(x = platelets, y = DEATH_EVENT_cat, fill = sex_cat)) +
+  geom_boxplot(outlier.colour = "orange") + 
+  labs(title = "Broj trombocita prema smrtnom ishodu", x = "Trombociti (k/mcl)", y = "Smrtni ishod")+
+  facet_wrap(~age_cat,nrow = 2)
+```
+
+```{r}
+ggplot(data, aes(x = platelets, y = age_cat)) +
+  geom_boxplot(outlier.colour = "orange") + 
+  labs(title = "Broj trombocita prema starosnoj grupi", x = "Trombociti (k/mcl)", y = "Starosna grupa")
+```
+
+
+Normalne vrednosti broja trombocita zavise od starosti i pola ispitanika. Kako čovek stari, broj trombocita koji se proizvodi je sve niži. Kod žena se primećuje nešto manji pad u njihovom broju (domensko znanje).
+Na grafu, medjutim primećujemo da ženske osobe starosti 75+ ne prate trend naveden iznad. Njihov broj trombocita je viši nego što bi očekivali za tu starosnu grupu. To je verovatno posledica malog uzorka inspitanika koji ovaj skup ima.
+
+Za neke generalne granice normale prilikom testiranja ovog parametra uzimaju se 140000-450000 po mikrolitru.Sa grafika uočavamo da se većina ispitanika nalazi u granicama normale za ovaj parametar.
+Vrednosti preko 450000 trombocita po mikrolitru se smatraju visokim.
+Vrednosti ispod 140000 se smatraju niskim i često su praćeni činjenicom da osoba ima anemiju.
+Poprilično mali broj ispitanika ima neuobičajene vrednosti ovog parametra i kako one mogu da ukazuju na oboljenja koja direktno ili indirektno utiču na heart failure, nećemo ih izbaciti.
+
+
+### Kreatinin u krvi
+
+```{r}
+ggplot(data, aes(x = serum_creatinine, y = DEATH_EVENT_cat, fill = sex_cat)) +
+  geom_boxplot(outlier.colour = "orange") + 
+  labs(title = "Količina kreatinina u krvi prema smrtnom ishodu", x = "Kreatinin (mg/dl)", y = "Smrtni ishod")+
+  facet_wrap(~age_cat,nrow = 2)
+```
+
+```{r}
+ggplot(data, aes(x = serum_creatinine, y = age_cat)) +
+  geom_boxplot(outlier.colour = "orange") + 
+  labs(title = "Količina kreatinina prema starosnoj grupi", x = "Kreatinin (mg/dl)", y = "Starosna grupa")
+```
+
+Kreatinin je takodje parametar koji zavisi od starosti i pola ispitanika. Povećava se tokom godina i obično se u manjim količinama u krvi nalazi kod žena u odnosu na muškarce.
+
+Granice normale se razlikuju za muškarce i žene:
+
+* 0.74-1.35 mg/dl kod muškaraca
+* 0.59-1.04 mg/dl kod žena
+
+Sve vrednosti van ovih granica smatraju se niskim, odnosno, visokim.
+Sa grafika možemo videti da je kreatinin kod većine ispitanika u granicama normale.
+Skoro sve neuobičajene vrednosti pripadaju visokim vrednostima za kreatinin. Imamo i dve izuzetno visoke vrednosti (veće od 8.5) koje, iako ne toliko česte, nisu nemoguće. Najviša ikad zabeležena koncentracija kreatinina u krvi iznosi 73.8 mg/dl.
+Kako ovaj parametar može izazvati oboljenja koja mogu uticati na heart failure, nećemo ih otkloniti.
+
+
+### Natrijum u krvi
+
+```{r}
+ggplot(data, aes(x = serum_sodium, y = DEATH_EVENT_cat, fill = age_cat)) +
+  geom_boxplot(outlier.colour = "orange") + 
+  labs(title = "Količina natrijuma u krvi prema smrtnom ishodu", x = "Natrijum (mEq/l)", y = "Smrtni ishod")
+```
+Količina natrijuma u krvi se razlikuje po starosti ispitanika. Za interval normale uzima se 135-145 mEq/l. 
+
+Sa grafika zaključujemo da je većina ispitanika u granicama normale. 
+Od nesvakidašnjih vrednosti, većinski imamo one koje su niže od donje granice normale. Ova količina natrijuma smatra se niskom i može biti uzrok srčanih problema, pa ih nećemo izbaciti.
+Vrednosti veće od gornje granice normale mogu prouzrokovati oboljenja koja mogu uticati na srce, pa ni njih nećemo odstraniti.
+
+# Feature selection
+
+U ovom odeljku ćemo ispitivati u kakvoj su zavisnosti varijable sa ciljnom promenljivom - **DEATH_EVENT**.
+
+```{r}
+xtabs(~DEATH_EVENT_cat, data = data)
+```
+
+## Medjusobna zavisnost dve kategorijske varijable
+
+Za utvrđivanje zavisnosti, pored posmatranja grafika, koristićemo i Chi-square (*X^2^*) test. Ovim testom se utvrđuje da li postoji zavisnost između dve kategorijske promenljive. Postavlja se nulta hipoteza - kategorijski parametri su nezavisni. Nakon izvršavanja testa, u zavisnosti od vrednosti parametra p (parametar značajnosti) nultu hipotezu prihvatamo (p > 0.05) odnosno odbacujemo (p < 0.05).
+
+### Zavisnost smrtnog ishoda od anemije
+
+```{r}
+ggplot(data = data) + geom_bar(aes(x=DEATH_EVENT_cat, fill=anaemia_cat), position="dodge") + labs(title ="Zavisnost smrtnog ishoda od anemije", x="Smrtni ishod", y="Broj ispitanika") + scale_x_discrete( labels=c("Nisu preminuli", "Preminuli")) + scale_fill_discrete(name="Anemija")
+```
+Bilo da posmatramo ispitanike koji su preminuli ili one koji nisu, u oba slučaja više ima onih koji nisu imali anemiju. Za anemiju, koja je sama po sebi zdravstveni problem, možemo reći da ne utiče na našu ciljnu promenljivu. Pogledajmo udeo onih koji su imali anemiju i preminuli:
+
+```{r}
+xtabs(~ DEATH_EVENT_cat + anaemia_cat, data = data)
+```
+```{r}
+prop.table(xtabs(~ DEATH_EVENT_cat + anaemia_cat, data = data), margin = 1)
+```
+Od ukupnog broja preminulih ispitanika, oko 47% njih imalo je anemiju. Nešto više od polovine preminulih nije imalo anemiju. Na osnovu ovih podataka možemo zaključiti da anemija ne predstavlja bitan prediktor. To možemo utvrditi na još jedan način - Chi-Squared testom.
+
+```{r}
+chisq.test(data$DEATH_EVENT, data$anaemia)
+```
+Na osnovu dobijene vrednosti za p-value, donosimo zaključak da anemija **ne utiče** na izlaznu promenljivu.
+
+### Zavisnost smrtnog ishoda od dijabetesa
+
+```{r}
+ggplot(data = data) + geom_bar(aes(x=DEATH_EVENT_cat, fill=diabetes_cat), position="dodge") + labs(title ="Zavisnost smrtnog ishoda od dijabetesa", x="Smrtni ishod", y="Broj ispitanika") + scale_x_discrete( labels=c("Nisu preminuli", "Preminuli")) + scale_fill_discrete(name="Dijabetes")
+```
+Na osnovu grafika zapažamo gotovo identičan slučaj kao kod ispitivanja zavisnosti smrtnog ishoda od anemije. Većina preminulih pacijenata, kao i preživelih, nisu imali dijabetes. Pogledaćemo i udeo ovih vrednosti.
+
+```{r}
+prop.table(xtabs(~ DEATH_EVENT_cat + diabetes_cat, data = data), margin = 1)
+```
+Od ukupnog broja preminulih pacijenata, oko 42% njih imalo je dijabetes. Već na osnovu ovoga možemo zaključiti da ni dijabetes ne predstavlja značajan parametar za predviđanje smrtnog ishoda, ali ćemo ponovo našu pretpostavku proveriti Chi-Squared testom.
+
+```{r}
+chisq.test(data$DEATH_EVENT, data$diabetes)
+```
+Dobijamo da dijabetes zaista **ne utiče** na izlaznu promenljivu.
+
+### Zavisnost smrtnog ishoda od hipertenzije
+
+```{r}
+ggplot(data = data) + geom_bar(aes(x=DEATH_EVENT_cat, fill=high_blood_pressure_cat), position="dodge") + labs(title ="Zavisnost smrtnog ishoda od hipertenzije", x="Smrtni ishod", y="Broj ispitanika") + scale_x_discrete( labels=c("Nisu preminuli", "Preminuli")) + scale_fill_discrete(name="Hipertenzija")
+```
+Ponovo, najmanje u skupu imamo onih ispitanika koji su imali hipertenziju i preminuli. Udeo ćemo pogledati ispod:
+
+```{r}
+prop.table(xtabs(~ DEATH_EVENT_cat + high_blood_pressure_cat, data = data), margin = 1)
+```
+41% ispitanika koji su preminuli imali su povišen krvni pritisak.
+
+```{r}
+chisq.test(data$DEATH_EVENT, data$high_blood_pressure)
+```
+Vrednost za p-value je veća od 0.05, čime dokazujemo hipotezu da su promenljive high_blood_pressure i DEATH_EVENT nezavisne. Drugim rečima, ni hipertenzija **ne predstavlja bitan prediktor**.
+
+### Zavisnost smrtnog ishoda od pola
+
+```{r}
+prop.table(xtabs(~sex_cat + DEATH_EVENT_cat, data = data), margin = 1)
+```
+Uočavamo da procentualno jednak broj muškaraca umire od otkazivanja srca koliko i žena.
+```{r}
+ggplot(data, aes(x = sex_cat, fill=DEATH_EVENT_cat)) +
+geom_bar(position = "dodge", width = 0.4) +
+ylab("Broj ispitanika") +
+xlab("Pol ispitanika") 
+```
+I sa grafa vidimo da pol nema neki uticaj na smrtni ishod ispitanika. Da bi bili sigurni, proverićemo i Chi-sqare testom.
+
+```{r}
+chisq.test(data$DEATH_EVENT, data$sex)
+```
+Vidimo da je vrednost parametra p veća od 0.05, dakle prihvatamo nultu hipotezu - smrtni ishod i pol su nezavisni. Dakle, pol **nećemo uzimati u obzir** prilikom pravljenja modela.
+
+### Zavisnost smrtnog ishoda od pušenja
+
+```{r}
+prop.table(xtabs(~smoking_cat + DEATH_EVENT_cat, data = data), margin = 1)
+```
+Uvočavamo sličnu situaciju kao sa polom. Da li je ispitanik pušač ili ne najverovatnije neće uticati na smrtni ishod. Prikazaćemo i grafikom, a zatim potvrditi i testom.
+
+```{r}
+ggplot(data, aes(x = smoking_cat, fill=DEATH_EVENT_cat)) +
+geom_bar(position = "dodge", width = 0.4) +
+ylab("Broj ispitanika") +
+xlab("Da li je pušač") 
+```
+```{r}
+chisq.test(data$DEATH_EVENT, data$smoking)
+```
+Vrednost parametra p je veća od 0.05, dakle, pušenje zaista **neće uticati** na smrtni ishod.
+
+S obzirom na to da nijedna kategorijska varijabla sama po sebi ne utiče na ciljnu promenljivu, proverićemo da li možda postoji zavisnost između neke njihove kombinacije i izlazne promenljive. Kako bismo ovo utvrdili, vizuelizaciju ćemo obaviti preko **mosaic** plot-a. Mosaic plot je pogodno koristiti u situacijama kada želimo da proverimo zavisnost između više kategorijskih varijabli. Početnom hipotezom pretpostavićemo da su varijable nezavisne. Ako pravougaonici na grafiku ne budu obojeni, to će značiti da je naša hipoteza tačna, tj. nema zavisnosti između posmatranih varijabli. Boje koje se mogu pojaviti na grafiku su plava i crvena i one označavaju zavisnost (plava označava da ima više slučajeva nego što se očekivalo, crvena označava manje slučajeva nego što se očekivalo).
+
+### Zavisnost smrtnog ishoda od anemije i dijabetesa
+
+```{r}
+ggplot(data, aes(x = anaemia_cat, fill=DEATH_EVENT_cat)) + geom_bar(position = "dodge", width = 0.4) + ylab("Broj ispitanika") + xlab("Anemija") + facet_wrap(~diabetes_cat) + scale_fill_discrete(name="Smrtni ishod")
+```
+Na osnovu barplot-a možemo pretpostaviti da nema neke bitne zavisnosti između varijabli. Pogledaćemo i mosaic plot.
+
+```{r}
+zavisnost = xtabs(~DEATH_EVENT_cat + anaemia_cat + diabetes_cat, data = data)
+ 
+mosaic(zavisnost, shade = TRUE, legend = TRUE, labeling_args = list(set_varnames = c(anaemia_cat = "Anemija", DEATH_EVENT_cat = "Smrtni ishod", diabetes_cat = "Dijabetes")), main = "Zavisnost smrtnog ishoda od anemije i dijabetesa") 
+```
+Kako na grafiku nemamo ni plavu a ni crvenu boju, posmatrane varijable su zaista **nezavisne**.
+
+### Zavisnost smrtnog ishoda od anemije i povišenog krvnog pritiska
+
+```{r}
+ggplot(data, aes(x = anaemia_cat, fill=DEATH_EVENT_cat)) + geom_bar(position = "dodge", width = 0.4) + ylab("Broj ispitanika") + xlab("Anemija") + facet_wrap(~high_blood_pressure_cat) + scale_fill_discrete(name="Smrtni ishod")
+```
+Slično kao ranije, ne uočava se zavisnost, ali ćemo to proveriti.
+
+```{r}
+zavisnost = xtabs(~DEATH_EVENT_cat + anaemia_cat + high_blood_pressure_cat, data = data)
+ 
+mosaic(zavisnost, shade = TRUE, legend = TRUE, labeling_args = list(set_varnames = c(anaemia_cat = "Anemija", DEATH_EVENT_cat = "Smrtni ishod", high_blood_pressure_cat = "Hipertenzija")), main = "Zavisnost smrtnog ishoda od anemije i povišenog krvnog pritiska") 
+```
+Zaključak je da **nemamo zavisnost** između posmatranih promenljivih.
+
+### Zavisnost smrtnog ishoda od anemije i pušenja
+
+```{r}
+ggplot(data, aes(x = anaemia_cat, fill=DEATH_EVENT_cat)) + geom_bar(position = "dodge", width = 0.4) + ylab("Broj ispitanika") + xlab("Anemija") + facet_wrap(~smoking_cat) + scale_fill_discrete(name="Smrtni ishod")
+```
+```{r}
+zavisnost = xtabs(~DEATH_EVENT_cat + anaemia_cat + smoking_cat, data = data)
+ 
+mosaic(zavisnost, shade = TRUE, legend = TRUE, labeling_args = list(set_varnames = c(anaemia_cat = "Anemija", DEATH_EVENT_cat = "Smrtni ishod", smoking_cat = "Pušenje")), main = "Zavisnost smrtnog ishoda od anemije i pušenja") 
+```
+Ponovo **nemamo zavisnost**.
+
+### Zavisnost smrtnog ishoda od anemije i pola
+
+```{r}
+ggplot(data, aes(x = anaemia_cat, fill=DEATH_EVENT_cat)) + geom_bar(position = "dodge", width = 0.4) + ylab("Broj ispitanika") + xlab("Anemija") + facet_wrap(~sex_cat) + scale_fill_discrete(name="Smrtni ishod")
+```
+```{r}
+zavisnost = xtabs(~DEATH_EVENT_cat + anaemia_cat + sex_cat, data = data)
+ 
+mosaic(zavisnost, shade = TRUE, legend = TRUE, labeling_args = list(set_varnames = c(anaemia_cat = "Anemija", DEATH_EVENT_cat = "Smrtni ishod", sex_cat = "Pol")), main = "Zavisnost smrtnog ishoda od anemije i pola") 
+```
+Ni u ovom slučaju **nemamo zavisnost**.
+
+### Zavisnost smrtnog ishoda od dijabetesa i pritiska
+
+```{r}
+ggplot(data, aes(x = diabetes_cat, fill=DEATH_EVENT_cat)) +
+  geom_bar(position = "dodge", width = 0.4) +
+  ylab("Broj ispitanika") +
+  xlab("Da li je ispitanik dijabetičar")+
+  facet_wrap(~high_blood_pressure_cat)
+```
+Sa grafika vidimo da je odnos preminulih i živih konstantan u podnosu na pritisak i dijabetes. Zaključujemo da kombinacija ova dva faktora **ne utiče** na smrtni ishod.
+
+```{r}
+zavisnost <- xtabs(~DEATH_EVENT_cat + diabetes_cat + high_blood_pressure_cat, data)
+ 
+mosaic(zavisnost, shade = TRUE, legend = TRUE, labeling_args = list(set_varnames = c(DEATH_EVENT_cat = "Smrtni ishod", diabetes_cat = "Dijabetes", high_blood_pressure_cat = "Visok pritisak")))
+```
+### Zavisnost smrtnog ishoda od dijabetesa i pušenja
+
+```{r}
+ggplot(data, aes(x = diabetes_cat, fill=DEATH_EVENT_cat)) +
+  geom_bar(position = "dodge", width = 0.4) +
+  ylab("Broj ispitanika") +
+  xlab("Da li je ispitanik dijabetičar")+
+  facet_wrap(~smoking_cat)
+```
+Sa grafika vidimo da je odnos preminulih i živih konstantan u podnosu na pušenje i dijabetes. Zaključujemo da kombinacija ova dva faktora **ne utiče** na smrtni ishod.
+
+```{r}
+zavisnost <- xtabs(~DEATH_EVENT_cat + diabetes_cat + smoking_cat, data)
+ 
+mosaic(zavisnost, shade = TRUE, legend = TRUE, labeling_args = list(set_varnames = c(DEATH_EVENT_cat = "Smrtni ishod", diabetes_cat = "Dijabetes", smoking_cat = "Da li je pušač")))
+```
+### Zavisnost smrtnog ishoda od dijabetesa i pola
+
+```{r}
+ggplot(data, aes(x = diabetes_cat, fill=DEATH_EVENT_cat)) +
+  geom_bar(position = "dodge", width = 0.4) +
+  ylab("Broj ispitanika") +
+  xlab("Da li je ispitanik dijabetičar")+
+  facet_wrap(~sex_cat)
+```
+Sa grafika vidimo da je odnos preminulih i živih konstantan u podnosu na pol i dijabetes. Zaključujemo da kombinacija ova dva faktora **ne utiče** na smrtni ishod.
+```{r}
+zavisnost <- xtabs(~DEATH_EVENT_cat + diabetes_cat + sex_cat, data)
+ 
+mosaic(zavisnost, shade = TRUE, legend = TRUE, labeling_args = list(set_varnames = c(DEATH_EVENT_cat = "Smrtni ishod", diabetes_cat = "Dijabetes", sex_cat = "Pol")))
+```
+
+### Zavisnost smrtnog ishoda od visokog krvnog pritiska i pušenja
+
+```{r}
+ggplot(data, aes(x = high_blood_pressure_cat, fill=DEATH_EVENT_cat)) +
+  geom_bar(position = "dodge", width = 0.4) +
+  ylab("Broj ispitanika") +
+  xlab("Visok krvni pritisak")+
+  facet_wrap(~smoking_cat)
+```
+Sa grafika vidimo da je odnos preminulih i živih konstantan u podnosu na pritisak i pušenje. Kod pušača sa povišenim pritiskom primećujemo da su približno brojevi preminulih i onih koji nisu. Proverićemo i pomoći mosaic-a.
+```{r}
+zavisnost <- xtabs(~DEATH_EVENT_cat + high_blood_pressure_cat + smoking_cat, data)
+ 
+mosaic(zavisnost, shade = TRUE, legend = TRUE, labeling_args = list(set_varnames = c(DEATH_EVENT_cat = "Smrtni ishod", high_blood_pressure_cat = "Visok krvni pritisak", smoking_cat = "Da li je pušač")))
+```
+Ne uočavamo nikakvu boju na grafiku što nam daje do znanja da kombinacija ova dva parametra **ne utiče** na smrtni ishod.
+
+### Zavisnost smrtnog ishoda od visokog krvnog pritiska i pola
+
+```{r}
+ggplot(data, aes(x = high_blood_pressure_cat, fill=DEATH_EVENT_cat)) +
+  geom_bar(position = "dodge", width = 0.4) +
+  ylab("Broj ispitanika") +
+  xlab("Visok krvni pritisak")+
+  facet_wrap(~sex_cat)
+```
+Sa grafika vidimo da je odnos preminulih i živih konstantan u podnosu na pol i povišen krvni pritisak Zaključujemo da kombinacija ova dva faktora **ne utiče** na smrtni ishod.
+
+```{r}
+zavisnost <- xtabs(~DEATH_EVENT_cat + high_blood_pressure_cat + sex_cat, data)
+ 
+mosaic(zavisnost, shade = TRUE, legend = TRUE, labeling_args = list(set_varnames = c(DEATH_EVENT_cat = "Smrtni ishod", high_blood_pressure_cat = "Visok krvni pritisak", sex_cat = "Pol")))
+```
+
+### Zavisnost smrtnog ishoda od pušenja i pola
+
+```{r}
+ggplot(data, aes(x = smoking_cat, fill=DEATH_EVENT_cat)) + geom_bar(position = "dodge", width = 0.4) + ylab("Broj ispitanika") + xlab("Pušenje") + facet_wrap(~sex_cat) + scale_fill_discrete(name="Smrtni ishod")
+```
+
+
+```{r}
+zavisnost = xtabs(~DEATH_EVENT_cat + smoking_cat + sex_cat, data = data)
+ 
+mosaic(zavisnost, shade = TRUE, legend = TRUE, labeling_args = list(set_varnames = c(smoking_cat = "Pušenje", DEATH_EVENT_cat = "Smrtni ishod", sex_cat = "Pol")), main = "Zavisnost smrtnog ishoda od pušenja i pola") 
+```
+Kada su varijable pušenje i pol u kombinaciji sa smrtnim ishodom, primećujemo značajnu obojenost grafika. I na osnovu prethodnog barplot-a možemo uočiti jednu situaciju koju nismo imali pre - u grupi ispitanika koji su ženskog pola i pušači po prvi put imamo slučaj da je većina ljudi preminula, ali isto tako vidimo da imamo jako mali broj osoba u toj grupi. To je verovatno posledica toga što imamo relativno mali broj ispitanika. Uzimajući ovo u obzir, **nećemo posmatrati pol i pušenje kao bitne faktore zajedno**, jer je zavisnost koju uočavamo sa mozaika vrlo verovatno posledica nekakvog trenda u skupu koji nema mnogo veze sa realnom slikom.
+
+## Međusobna zavisnost numeričke i kategorijske promenljive
+
+Da bismo utvrdili da li smrtni ishod zavisi od posmatranih numeričkih parametara, posmatraćemo grafove i upotrebiti Kruskal-Wallis test. Ovim testom ispitujemo zavisnost numeričke i kategorijske varijable i kao rezultat dobijamo Kruskal-Wallis Chi-square parametar i parametar značajnosti - p.
+Identično kao kod Chi-square testa, postavljamo hitpotezu da su varijable nezavisne. Ukoliko je vrednost parametra p veća od 0.05, hipoteza se prihvata. U suprotnom se odbacuje i zaključujemo da zavisnost postoji.
+
+### Zavisnost smrtnog ishoda od starosti
+
+```{r}
+ggplot(data, aes(x = age, fill = DEATH_EVENT_cat)) + geom_density(alpha = 0.2) + labs(title = "Odnos starosti ispitanika i smrtnog ishoda", x="Starost") + scale_fill_discrete(name="Smrtni ishod")
+```
+U obe grupe ispitanika (i oni koji su preminuli i oni koji nisu) imamo visoke vrednosti za godine, pa samim tim ne možemo sa sigurnošću reći da će ljudi sa više od određenog broja godina sigurno preminuti. Međutim, ako pogledamo površine ispod grafika, negde od 70. godine života pa naviše je veća šansa da će osoba preminuti. Isto tako, ispod 70 godina je nešto veća šansa da će preživeti. Proverićemo ovo i preko boxplot-a.
+
+```{r}
+ggplot(data, aes(x = DEATH_EVENT_cat, y = age)) + geom_boxplot(fill = "cornflowerblue") + labs(title = "Zavisnost smrtnog ishoda od starosti ispitanika", x="Smrtni ishod", y="Starost") + scale_x_discrete( labels=c("Nisu preminuli", "Preminuli"))
+```
+Na osnovu dobijenog grafika, možemo utvrditi da je vrednost medijane kod preminulih viša nego kod ispitanika koji nisu preminuli, ali ne drastično. Možemo na osnovu toga i interkvatilnog rastojanja  pretpostaviti da su uglavnom stariji pacijenti imali manje šanse da prežive.
+
+Uzimajući u obzir zaključke koje smo izveli na osnovu ova dva grafika, možemo pretpostaviti da starost potencijalno može biti značajan za predikciju (naročito ukoliko se iskombinuje sa još nekim parametrima, ali to će biti analizirano u nastavku).  Kako bismo proverili da li starost predstavlja bitan prediktor, sprovešćemo Kruskal-Wallis test.
+
+```{r}
+kruskal.test(x = data$age, g = data$DEATH_EVENT_cat)
+```
+Kako dobijamo da je p-value < 0.05, odbacujemo nultu hipotezu da su varijable starost i smtrni ishod nezavisne, čime dolazimo do zaključka da starost **utiče** na našu ciljnu promenljivu.
+
+### Zavisnost smrtnog ishoda od vrednosti CPK enzima
+
+```{r}
+ggplot(data, aes(x = creatinine_phosphokinase, fill = DEATH_EVENT_cat)) + geom_density(alpha = 0.2) + labs(title = "Odnos CPK enzima u krvi ispitanika i smrtnog ishoda", x="CPK enzim (mcg/L)") + scale_fill_discrete(name="Smrtni ishod")
+```
+Iako imamo veoma širok spektar vrednosti za CPK enzim u skupu podataka, možemo primetiti da za obe grupe ispitanika (i preminule i preživele) density plot izgleda dosta slično, pa samim tim ne možemo izvesti neki značajan zaključak. Za najveći broj ispitanika (do 2000 mcg/L) dobijamo gotovo preklapanje grafika preminulih i preživelih. Možemo uzeti u obzir i da su za vrednosti preko 5700 mcg/L (otprilike) ispitanici preminuli, ali ćemo to bolje pogledati kada razdvojimo ova dva grafika.
+
+```{r}
+ggplot(data, aes(x = creatinine_phosphokinase, y = DEATH_EVENT_cat, fill = DEATH_EVENT_cat)) + geom_density_ridges() + theme_ridges() + labs(title = "Odnos CPK enzima i smrtnog ishoda", x = "CPK enzim (mcg/L)", y = "Smrtni ishod") + theme(legend.position = "none") + scale_y_discrete( labels=c("Nisu preminuli", "Preminuli"))
+```
+Kao što je iznad navedeno, ispitanici sa ekstremno visokim vrednostima CPK enzima su preminuli.
+
+```{r}
+ggplot(data, aes(x = creatinine_phosphokinase, y = DEATH_EVENT_cat)) + geom_boxplot(fill = "cornflowerblue") + labs(title = "Zavisnost smrtnog ishoda od vrednosti CPK enzima", x="CPK enzim (mcg/L)", y="Smrtni ishod") + scale_y_discrete( labels=c("Nisu preminuli", "Preminuli"))
+```
+Medijane su gotovo na identičnoj poziciji. Za ispitanike sa dve najveće vrednosti CPK enzima u skupu  možemo primetiti da su preminuli. Međutim, već na osnovu grafika možemo pretpostaviti da CPK enzim verovatno ne predstavlja značajan parametar za predviđanje izlazne promenljive. Kako bismo ovo proverili, ponovo sprovodimo Kruskal-Wallis test.
+
+```{r}
+kruskal.test(x = data$creatinine_phosphokinase, g = data$DEATH_EVENT_cat)
+```
+Dobijamo vrednost za p-value koja je veća od 0.05, čime smo potvrdili da ne postoji zavisnost između vrednosti CPK enzima u krvi i smrtnog ishoda, odnosno CPK enzim zaista **ne predstavlja bitan prediktor**.
+
+### Zavisnost smrtnog ishoda od ejekcione frakcije
+
+```{r}
+ggplot(data, aes(x = ejection_fraction, fill = DEATH_EVENT_cat)) + geom_density(alpha = 0.4) + labs(title = "Odnos ejekcione frakcije i smrtnog ishoda", x="Ejekciona frakcija (%)") + scale_fill_discrete(name="Smrtni ishod")
+```
+Na osnovu density plot-a, možemo primetiti da je većina ispitanika sa ejekcionom fakcijom ispod (odokativno) 32% preminula. Pogledaćemo i raspodelu na boxplot-u.
+
+```{r}
+ggplot(data, aes(x = ejection_fraction, y = DEATH_EVENT_cat)) + geom_boxplot(fill = "cornflowerblue") + labs(title = "Zavisnost smrtnog ishoda od ejekcione frakcije", x="Ejekciona frakcija (%)", y="Smrtni ishod") + scale_y_discrete( labels=c("Nisu preminuli", "Preminuli"))
+```
+Sa ovog grafika još bolje možemo uočiti da su u globalu preminuli ispitanici imali niže vrednosti za ejekcionu frakciju u odnosu na preživele. Medijane za ove dve grupe ispitanika se poprilično razlikuju, za razliku od slučajeva iznad kada smo posmatrali starost i CPK enzim, gde su bile dosta slične. Na osnovu ovoga, ejekciona frakcija potencijalno može biti bitan prediktor za model koji ćemo kasnije napraviti. Kako bismo bili sigurni u ovu pretpostavku, pobovo sprovodimo Kruskal-Wallis test.
+
+```{r}
+kruskal.test(x = data$ejection_fraction, g = data$DEATH_EVENT_cat)
+```
+Ipak, ovim testom dobijamo odbacujemo nultu hipotezu - da su ejekciona frakcija i smrtni ishod nezavisne varijable. Ejekciona frakcija **utiče** na ciljnu promenljivu.
+
+### Zavisnost smrtnog ishoda i broja trombocita u krvi
+
+```{r}
+ggplot(data, aes(x=platelets,colour=DEATH_EVENT_cat,fill=DEATH_EVENT_cat))+
+  geom_density(alpha=0.2)+
+  scale_y_continuous(name = "Gustina")+
+  scale_x_continuous(name = "Broj trombocita u krvi")
+```
+Na grafiku vidimo da u suštini nema velike razlike u nivoima trombocita kod preminulih ispitanika i onih koji nisu. Da bismo sigurno utvrdili da li zavisnost ne postoji, odradićemo Kruskal-Wallis test.
+```{r}
+kruskal.test(x = data$platelets, g = data$DEATH_EVENT_cat)
+```
+Vrednost parametra p nam je veća od 0.05 što znači da prihvatamo nultu hipotezu. Broj trombocita u krvi **ne utiče** na smrtni ishod.
+
+
+### Zavisnost smrtnog ishoda i nivoa kreatinina u krvi
+
+```{r}
+ggplot(data, aes(x=serum_creatinine,colour=DEATH_EVENT_cat,fill=DEATH_EVENT_cat))+
+  geom_density(alpha=0.2)+
+  scale_y_continuous(name = "Gustina")+
+  scale_x_continuous(name = "Nivo kreatinina u krvi")
+```
+Sa grafika vidimo da preminuli ispitanici imaju veoma niže nivoe kreatinina u krvi. Odradićemo i test da bi potvrdili postojanje zavisnosti izmedju dva paramtra.
+
+```{r}
+kruskal.test(x = data$serum_creatinine, g = data$DEATH_EVENT_cat)
+```
+Kao rezultat testa dobijamo vrednost parametra p koja je manja od 0.05, što nam ukazuje da **nivo kreatinina jeste bitan parametar za predikciju smrtnog ishoda**.
+
+### Zavisnost smrtnog ishoda i nivoa natrijuma u krvi
+
+```{r}
+ggplot(data, aes(x=serum_sodium,colour=DEATH_EVENT_cat,fill=DEATH_EVENT_cat))+
+  geom_density(alpha=0.2)+
+  scale_y_continuous(name = "Gustina")+
+  scale_x_continuous(name = "Nivo natrijuma u krvi")
+```
+Sa grafika vidimo da preminuli ispitanici imaju niže količine natrijuma u krvi. Potencijalno bi količina natrijuma mogla da utiče na smrtni ishod pa ćemo odraditi test da to potvrdimo.
+```{r}
+kruskal.test(x = data$serum_sodium, g = data$DEATH_EVENT_cat)
+```
+Vrednost za parametar p koji dobijemo je manja od 0.05. Dakle i **količina natrijuma jeste bitan parametar prilikom predvidjanja smrtnog ishoda**.
+
+### Zavisnost smrtnog ishoda i propratnog perioda
+
+Propratni period predstavlja broj dana posmatranja pacijenta nakon pregleda. Kao takav, nema nikakav uticaj na smrtni ishod ispitanika pa nećemo analizirati zavisnost.
+
+# Modeli mašinskog učenja
+
+## Podela skupa na trening i test
+
+Skup podata ćemo podeliti na trening i testni skup u odnosu 80:20. Uzećemo nasumične vrste za oba skupa.
+```{r}
+sample_size = floor(0.8*nrow(data))
+set.seed(10)
+train_ind = sample(seq_len(nrow(data)), size = sample_size)
+```
+Izvojićemo parametre (kolone) koje su nam značajne za predikciju smrtnog ishoda.
+```{r}
+parametri = c('age','ejection_fraction','serum_creatinine','serum_sodium','DEATH_EVENT')
+data_prediction=data[parametri]
+
+train = data_prediction[train_ind, ]
+test = data_prediction[-train_ind, ]
+```
+Da pogledamo kako nam izgledaju trening i test skupovi.
+
+```{r}
+str(train)
+```
+```{r}
+str(test)
+```
+```{r}
+dim(train)
+```
+```{r}
+dim(test)
+```
+```{r}
+count(test[which(test$DEATH_EVENT==1),])
+```
+```{r}
+count(test[which(test$DEATH_EVENT==0),])
+```
+
+
+## Stablo odlučivanja
+
+```{r}
+tree = rpart(DEATH_EVENT ~ ., data = train, method = "class")
+rpart.plot(tree, extra = 106)
+```
+Za parametar **extra** funkcije *rpart.plot* stavili smo vrednost 106 jer je u pitanju binarna klasifikacija.
+
+Sa grafika vidimo da listovi stabla predstavljaju predikciju modela tj. kojoj klasi smatra da odredjeni ispitanik pripada. Čvorovi unutar stabla predstavljaju test za odredjeni atribut i u zavisnosti od (ne)ispunjenosti tog testa, kroz drvo se spuštamo niz desnu odnosno levu granu.
+
+**Predikcija korišćenjem stabla odlučivanja:**
+
+```{r}
+decision_tree_prediction = predict(tree, test, type = 'class')
+```
+
+```{r}
+decision_tree_prediction
+```
+
+
+```{r}
+table_mat = table(test$DEATH_EVENT, decision_tree_prediction)
+table_mat
+```
+Model je tačne predikcije doneo za 52 ispitanika (40 stvarno nisu preminuli, 12 jeste). Šest ispitanika je pogrešno klasifikovao kao preminule, a pet pogrešno da nisu.
+
+Naš model služi da prediktuje da li može doći do smrtnog ishoda. To znači da nam najveću opasnost i problem predstavlja ukoliko model pogrešno predvidi da ispitanik nije u smrtnoj opasnosti. Na osnovu toga, kao glavnu metriku za ovaj i sledeće modele koristićemo **recall**.
+
+**Recall** predstvlja metriku koja nam govori koliko je pozitivnih izlaza zapravo predvideo kao takve. Drugačije se naziva true positive rate (TPR).
+Izračunava se na sledeći način: TP/(TP+FN).
+
+Izračunajmo recall modela stabla odlučivanja:
+```{r}
+decision_tree_recall=table_mat[2,"1"]/(table_mat[2,"1"]+table_mat[2,"0"])
+decision_tree_recall
+```
+\
+Ukoliko nas zanima tačnost modela (*accuracy*), to izračunavamo na sledeći način:
+```{r}
+decision_tree_accuracy = sum(diag(table_mat))/sum(table_mat)
+decision_tree_accuracy
+```
+
+Kao što vidimo, ovaj model uopšte nije loš. U nastavku ćemo razmatrati još neke modele i odabrati najefikasniji.
+
+
+## Naivni Bayes
+
+Naivni Bayes (eng. *Naive Bayes*) je tehnika klasifikovanja kojom svakom ispitaniku dodeljujemo labelu, pri čemu je ona u obliku vektora vrednosti obeležja. Labela uzima vrednost iz nekog konačnog skupa, u našem slučaju 0 ili 1.
+
+Bayes klasifikatori posmatraju svako obeležje kao nezavisno od svih ostalih. Svaki od obeležja nezavisno doprinosi verovatnoći da ispitanik pripada odredjenoj klasi.
+
+Rezultujuća kolona mora da bude faktor, pa ćemo to i odraditi.
+
+```{r}
+library(e1071)
+library(caret)
+library(caretEnsemble)
+library(psych)
+library(GGally)
+library(randomForest)
+```
+
+```{r}
+x = train[,-5]
+y = as.factor(train$DEATH_EVENT)
+```
+
+```{r}
+bayesModel = train(x,y,'nb',trControl=trainControl(method='cv',number=10))
+bayesModel
+```
+Prilikom treniranja korišćena je krosvalidaciona metoda u 10 koraka (možemo videti iz prosledjenih parametara funkcije train, **method='cv'** i **number=10**)
+
+```{r}
+bayesModelPred = predict(bayesModel,test)
+```
+
+```{r}
+bayesModelPred
+```
+
+
+```{r}
+X = varImp(bayesModel)
+plot(X)
+```
+Grafik prikazuje obeležja po značajnosti prema onome sto je bayes model naučio iz trening skupa. Vidimo da na odluku modela skoro 100% utiče količina kreatinina u krvi.
+
+```{r}
+matrix = table(test$DEATH_EVENT,bayesModelPred)
+matrix
+```
+Vidimo da je model ispravno predvideo za za 50 ispitanika.Devetoro njih je pogresno klasifikovao kao žive, a četvoro pogrešno kao preminule.
+
+Izračunajmo recall modela naivnog Bayes-a:
+```{r}
+bayes_recall=matrix[2,"1"]/(matrix[2,"1"]+matrix[2,"0"])
+bayes_recall
+```
+\
+Ukoliko nas zanima tačnost modela (*accuracy*):
+```{r}
+bayes_accuracy = sum(diag(matrix))/sum(matrix)
+bayes_accuracy
+```
+
+## Logistička regresija
+
+Logistička regresija predstavlja još jedan metod za klasifikaciju koji ima široku upotrebu. Vraća verovatnoću pripadnosti nekoj klasi, što znači da je u pitanju verovatnosni klasifikator. Verovatnoću pripadnosti nekoj klasi potom treba transformisati u konkretne izlaze (0 ili 1 - nije preminuo ili preminuo) korišćenjem odabrane vrednosti praga. Modelom logističke regresije opisaćemo vezu između prediktora, a potom ćemo ga oceniti i uporediti sa prethodnim modelima. Prvo ćemo učitati potrebne pakete:
+
+```{r}
+library("caTools")    # For Logistic regression
+library("ROCR")       # For ROC curve to evaluate model
+```
+Logističku regresiju možemo implementirati korišćenjem **glm()** funkcije.
+
+```{r}
+logisticModel <- glm(DEATH_EVENT ~ age + ejection_fraction + serum_creatinine + serum_sodium, 
+                      data = train, 
+                      family = "binomial")
+```
+
+```{r}
+summary(logisticModel)
+```
+Potom vršimo predikciju i dobijene verovatnoće pripadnosti klasi transformišemo u 0 ili 1 (0 ako je vrednost <= 0.5, 1 ako je vrednost > 0.5, pri čemu je 0.5 vrednost praga).
+
+```{r}
+logisticModelPred <- predict(logisticModel, test, type = "response")
+logisticModelPred <- ifelse(logisticModelPred > 0.5, 1, 0)
+```
+
+```{r}
+logisticModelPred
+```
+
+
+```{r}
+table_logreg = table(test$DEATH_EVENT, logisticModelPred)
+table_logreg
+```
+Model je tačne predikcije doneo za 49 ispitanika od ukupno 63, od čega je u žive svrstao 42 ispitanika koji su zaista živi i 7 ispitanika u preminule koji su zaista preminuli. 4 ispitanika je pogrešno klasifikovano u grupu preminulih, a 10 u grupu živih. 
+
+Izračunaćemo recall ovog modela:
+
+```{r}
+logreg_recall=table_logreg[2,"1"]/(table_logreg[2,"1"]+table_logreg[2,"0"])
+logreg_recall
+```
+Kao i tačnost (accuracy):
+
+```{r}
+logreg_accuracy = sum(diag(table_logreg))/sum(table_logreg)
+logreg_accuracy
+```
+
+## Upoređivanje modela
+
+Pozabavićemo se i ROC krivom. ROC kriva pokazuje odnos između TPR (True Positive Rate) i FPR (False Positive Rate). True Positive Rate predstavlja udeo pozitivnih ishoda koji su korekno identifikovani kao takvi, dok False Positive Rate pokazuje koji udeo čine ishodi koji su zapravo negativni, ali su lažno svrstani u pozitivne.
+
+### ROC kriva za stablo odlučivanja
+```{r}
+ROCPredTree <- prediction(as.numeric(decision_tree_prediction), test$DEATH_EVENT) 
+ROCPerTree <- performance(ROCPredTree, measure = "tpr", x.measure = "fpr")
+   
+auc <- performance(ROCPredTree, measure = "auc")
+auc <- auc@y.values[[1]]
+auc
+```
+Iscrtavanje krive:
+
+```{r}
+plot(ROCPerTree)
+plot(ROCPerTree, colorize = TRUE, print.cutoffs.at = seq(0.1, by = 0.1), main = "Stablo odlučivanja - ROC kriva")
+abline(a = 0, b = 1)
+   
+auc <- round(auc, 4)
+legend(.6, .4, auc, title = "AUC", cex = 1)
+```
+
+### ROC kriva za naivni Bayes
+```{r}
+ROCPredBayes <- prediction(as.numeric(bayesModelPred), test$DEATH_EVENT) 
+ROCPerBayes <- performance(ROCPredBayes, measure = "tpr", x.measure = "fpr")
+   
+auc <- performance(ROCPredBayes, measure = "auc")
+auc <- auc@y.values[[1]]
+auc
+```
+Iscrtavanje krive:
+
+```{r}
+plot(ROCPerBayes)
+plot(ROCPerBayes, colorize = TRUE, print.cutoffs.at = seq(0.1, by = 0.1), main = "Naivni Bayes - ROC kriva")
+abline(a = 0, b = 1)
+   
+auc <- round(auc, 4)
+legend(.6, .4, auc, title = "AUC", cex = 1)
+```
+
+### ROC kriva za logističku regresiju
+
+```{r}
+ROCPred <- prediction(logisticModelPred, test$DEATH_EVENT) 
+ROCPer <- performance(ROCPred, measure = "tpr", x.measure = "fpr")
+   
+auc <- performance(ROCPred, measure = "auc")
+auc <- auc@y.values[[1]]
+auc
+```
+Iscrtavanje krive:
+
+```{r}
+plot(ROCPer)
+plot(ROCPer, colorize = TRUE, print.cutoffs.at = seq(0.1, by = 0.1), main = "Logistička regresija - ROC kriva")
+abline(a = 0, b = 1)
+   
+auc <- round(auc, 4)
+legend(.6, .4, auc, title = "AUC", cex = 1)
+```
+
+
+Ukoliko se naš model nađe na dijagonali koju možemo videti na grafiku, ili ispod, to znači da njegovo predviđanje nije ništa bolje od običnog bacanja novčića, odnosno slučajne klasifikacije. Idealan slučaj bio bi da True Positive Rate bude 1, a False Positive Rate 0, jer bi to značilo da model vrši ispravnu predikciju za 100% slučajeva koje imamo u testnom skupu. Međutim, modeli ne mogu biti savršeni i očekivano je da prave greške, ali je cilj da to bude u što manjoj meri. Kao što možemo videti, površina ispod grafika (AUC) iznosi 0.66 od 1 koliko je maksimalno moguće (idealni klasifikator ima AUC=1), i samim tim možemo zaključiti da je model nešto bolji od bacanja novčića, što je daleko od idealnog.
+
+Na osnovu vrednosti za recall i accuracy, kao i upravo analizirane ROC krive i površine ispod nje, zaključujemo da je model logističke regresije lošiji prethodnih. Od tri predstavljena modela, najbolje se pokazao model stabla odlučivanja.
+
+## Zaključak
+Analizom kreiranih modela, došli smo do saznanja da je za problem koji rešavamo najpogodnije koristiti **model stabla odlučivanja**, koji se pokazao kao najbolji na osnovu izračunatih metrika.
